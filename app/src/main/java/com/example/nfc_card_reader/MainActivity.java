@@ -1,6 +1,9 @@
 package com.example.nfc_card_reader;
 
+import static java.security.AccessController.getContext;
+
 import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
 import android.nfc.NdefRecord;
 import android.nfc.Tag;
@@ -44,10 +47,9 @@ public class MainActivity extends AppCompatActivity {
         } else {
             txt1.setText("您已启用NFC功能");
         }
-
         // 创建一个 PendingIntent，用于处理 NFC 意图
         pendingIntent = PendingIntent.getActivity(
-                this, 0, new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE
+                this, 0, new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_MUTABLE
         );
     }
 
