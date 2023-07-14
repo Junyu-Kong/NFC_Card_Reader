@@ -1,19 +1,19 @@
 package com.example.nfc_card_reader;
 
-import static java.security.AccessController.getContext;
-
+import static java.lang.Math.pow;
 import android.app.PendingIntent;
-import android.content.Context;
+import android.nfc.tech.IsoDep;
 import android.content.Intent;
 import android.nfc.NdefRecord;
 import android.nfc.Tag;
 import android.nfc.NfcAdapter;
-import java.util.Arrays;
 import android.os.Bundle;
 import android.nfc.NdefMessage;
 import android.os.Parcelable;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.io.IOException;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -21,6 +21,7 @@ public class MainActivity extends AppCompatActivity {
 
     private NfcAdapter nfcAdapter;
     private PendingIntent pendingIntent;
+    private IsoDep isoDep;
     TextView txt1;
     TextView txt2;
 
@@ -85,27 +86,36 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void handleIntent(Intent intent) {
-        if (NfcAdapter.ACTION_NDEF_DISCOVERED.equals(intent.getAction())) {
-            Parcelable[] rawMsgs = intent.getParcelableArrayExtra(
-                    NfcAdapter.EXTRA_NDEF_MESSAGES);
-            NdefMessage msgs[] = null;
-            int contentSize = 0;
-            if (rawMsgs != null) {
-                msgs = new NdefMessage[rawMsgs.length];
-                for (int i = 0; i < rawMsgs.length; i++) {
-                    msgs[i] = (NdefMessage) rawMsgs[i];
-                    contentSize += msgs[i].toByteArray().length;
-                }
-            }
+        Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
+        if (tag != null) {
+            isoDep = IsoDep.get(tag);
             try {
-                if (msgs != null) {
-                    NdefRecord record = msgs[0].getRecords()[0];
-                    String textRecord = parseTextRecord(record);
-                    txt2.setText(textRecord + "\n\ntext\n" + contentSize + " bytes");
+                isoDep.connect();  //这里建立我们应用和IC卡
+                if (isoDep.isConnected()){
+                    txt2.setText("connected");
+                    byte[] command = new byte[]{
+                            (byte) 0x00,         // CLA (Class)
+                            (byte) 0xB2,         // INS (Instruction) for READ RECORD
+                            (byte) 0x00,         // P1 (Parameter 1) for SFI selection
+                            (byte) (0x80 | 0x0F), // P2 (Parameter 2) for Record number and SFI
+                            (byte) 0x20          // Le (Expected length of data to be read)
+                    };
+                    // byte[] response = isoDep.transceive(command)
+                    byte[] ids = tag.getId();
+                    String uid = bytesToHexString(ids, ids.length);
+                    txt2.setText(uid);
                 }
-            } catch (Exception e) {
+            } catch (IOException e) {
+                Toast.makeText(this, "fail to connect", Toast.LENGTH_SHORT);
+            }finally {
+                try{
+                    isoDep.close();
+                }catch (IOException e) {
+                    Toast.makeText(this, "fail to connect", Toast.LENGTH_SHORT);
+                }
             }
         }
+
     }
 
     public static String parseTextRecord(NdefRecord ndefRecord) {
@@ -116,10 +126,7 @@ public class MainActivity extends AppCompatActivity {
         if (ndefRecord.getTnf() != NdefRecord.TNF_WELL_KNOWN) {
             return null;
         }
-        //判断可变的长度的类型
-        if (!Arrays.equals(ndefRecord.getType(), NdefRecord.RTD_TEXT)) {
-            return null;
-        }
+
         try {
             //获得字节数组，然后进行分析
             byte[] payload = ndefRecord.getPayload();
@@ -139,5 +146,32 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             throw new IllegalArgumentException();
         }
+    }
+
+    public static String parsePublicInfo(byte[] bytes){
+        int id = (int)(bytes[19] + bytes[18] * pow(16, 2) + bytes[17] * pow(16, 4)+ bytes[16] * pow(16, 6));
+        String output = "id: " + id + "\n";
+        output += "生效日期: " + bcdToString(bytes[20]) + bcdToString(bytes[21]) + bcdToString(bytes[22]) + bcdToString(bytes[23]) + "\n";
+        output += "失效日期: " + bcdToString(bytes[24]) + bcdToString(bytes[25]) + bcdToString(bytes[26]) + bcdToString(bytes[27]) + "\n";
+        return output;
+    }
+
+    public static String bytesToHexString(byte[] bytes, int len) {
+        StringBuilder stringBuilder = new StringBuilder("");
+        if (bytes == null || bytes.length <= 0) return null;
+        if (len <= 0) return "";
+        for (int i = 0; i < len; i++) {
+            int v = bytes[i] & 0xFF;
+            String hv = Integer.toHexString(v);
+            if (hv.length() < 2) {
+                stringBuilder.append("0");
+            }
+            stringBuilder.append(hv);
+        }
+        return stringBuilder.toString();
+    }
+    public static String bcdToString(byte a){
+        int val = a;
+        return String.valueOf(val / 16) + String.valueOf(val % 16);
     }
 }
