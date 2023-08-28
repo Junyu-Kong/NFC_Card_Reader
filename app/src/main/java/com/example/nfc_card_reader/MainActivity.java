@@ -1,177 +1,242 @@
-package com.example.nfc_card_reader;
-
-import static java.lang.Math.pow;
-import android.app.PendingIntent;
-import android.nfc.tech.IsoDep;
-import android.content.Intent;
-import android.nfc.NdefRecord;
-import android.nfc.Tag;
-import android.nfc.NfcAdapter;
-import android.os.Bundle;
-import android.nfc.NdefMessage;
-import android.os.Parcelable;
-import android.widget.TextView;
-import android.widget.Toast;
-
-import java.io.IOException;
+package com.example.test;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.app.PendingIntent;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.nfc.NfcAdapter;
+import android.nfc.Tag;
+import android.nfc.tech.IsoDep;
+import android.nfc.tech.MifareClassic;
+import android.nfc.tech.NfcA;
+import android.nfc.tech.NfcF;
+import android.os.Bundle;
+import android.view.View;
+import android.widget.TextView;
+import android.widget.Toast;
+
 public class MainActivity extends AppCompatActivity {
 
-    private NfcAdapter nfcAdapter;
-    private PendingIntent pendingIntent;
-    private IsoDep isoDep;
-    TextView txt1;
-    TextView txt2;
+    NfcAdapter nfcAdapter;
+    TextView text;
+    private PendingIntent pi;
+    private IntentFilter[] mFilters;
+    private String[][] mTechLists;
+    private String metaInfo;
+    private Boolean auth = false;
+
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        txt1 = findViewById(R.id.t1);
-        txt2 = findViewById(R.id.t2);
-
-        // 获取默认的 NFC 适配器
+        text = (TextView) findViewById(R.id.textView);
+        // 获取默认的NFC控制器
         nfcAdapter = NfcAdapter.getDefaultAdapter(this);
-
-        // 确保拥有NFC功能
+        pi = PendingIntent.getActivity(this, 0, new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), 0);
+        IntentFilter ndef = new IntentFilter(NfcAdapter.ACTION_TECH_DISCOVERED);
+        try {
+            ndef.addDataType("*/*");
+        } catch (IntentFilter.MalformedMimeTypeException e) {
+            throw new RuntimeException("fail", e);
+        }
+        mFilters = new IntentFilter[]{ndef,};
+        mTechLists = new String[][]{{IsoDep.class.getName()}, {NfcA.class.getName()},};
+        // KLog.d(" mTechLists", NfcF.class.getName() + mTechLists.length);
         if (nfcAdapter == null) {
-            txt1.setText("您没有NFC功能");
+            Toast.makeText(this, "手机不支持nfc", Toast.LENGTH_SHORT).show();
+            finish();
             return;
         }
-
-        // 确保NFC功能已启用
         if (!nfcAdapter.isEnabled()) {
-            txt1.setText("您没有启用NFC功能");
-        } else {
-            txt1.setText("您已启用NFC功能");
+            Toast.makeText(this, "设置没开NFC", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
         }
-        // 创建一个 PendingIntent，用于处理 NFC 意图
-        pendingIntent = PendingIntent.getActivity(
-                this, 0, new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_MUTABLE
-        );
     }
 
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        /*
+        isoDep CPU卡(ISO 14443-4)  NfcA或NfcB
+        m1卡 NfcA
+         */
+        super.onNewIntent(intent);
+        Toast.makeText(this, "", Toast.LENGTH_SHORT).show();
+        Tag tagFromIntent = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
+        //KLog.e("tagFromIntent", "tagFromIntent" + tagFromIntent);
+        if (NfcAdapter.ACTION_TAG_DISCOVERED.equals(intent.getAction())) {
+            processIntent(intent);//处理响应
+        }
+
+    }
+
+    //页面获取焦点
     @Override
     protected void onResume() {
         super.onResume();
-        // 启用前台调度，以便处理 NFC 意图
-        if (nfcAdapter != null) {
-            // 启用前台调度
-            nfcAdapter.enableForegroundDispatch(
-                    this, pendingIntent, null, null
-            );
-        }
+        nfcAdapter.enableForegroundDispatch(this, pi, null, null);
     }
 
+    //页面失去焦点
     @Override
     protected void onPause() {
         super.onPause();
-        // 禁用前台调度
         if (nfcAdapter != null) {
-            // 禁用前台调度
             nfcAdapter.disableForegroundDispatch(this);
         }
     }
 
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        txt2.setText("intent received");
-
-        // 获取消息
-        handleIntent(intent);
-    }
-
-    private void handleIntent(Intent intent) {
-        Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
-        if (tag != null) {
-            isoDep = IsoDep.get(tag);
-            try {
-                isoDep.connect();  //这里建立我们应用和IC卡
-                if (isoDep.isConnected()){
-                    txt2.setText("connected");
-                    byte[] command = new byte[]{
-                            (byte) 0x00,         // CLA (Class)
-                            (byte) 0xB2,         // INS (Instruction) for READ RECORD
-                            (byte) 0x00,         // P1 (Parameter 1) for SFI selection
-                            (byte) (0x80 | 0x0F), // P2 (Parameter 2) for Record number and SFI
-                            (byte) 0x20          // Le (Expected length of data to be read)
-                    };
-                    // byte[] response = isoDep.transceive(command)
-                    byte[] ids = tag.getId();
-                    String uid = bytesToHexString(ids, ids.length);
-                    txt2.setText(uid);
-                }
-            } catch (IOException e) {
-                Toast.makeText(this, "fail to connect", Toast.LENGTH_SHORT);
-            }finally {
-                try{
-                    isoDep.close();
-                }catch (IOException e) {
-                    Toast.makeText(this, "fail to connect", Toast.LENGTH_SHORT);
-                }
-            }
-        }
-
-    }
-
-    public static String parseTextRecord(NdefRecord ndefRecord) {
-        /**
-         * 判断数据是否为NDEF格式
-         */
-        //判断TNF
-        if (ndefRecord.getTnf() != NdefRecord.TNF_WELL_KNOWN) {
+    //字符序列转换为16进制字符串
+    private String bytesToHexString(byte[] src) {
+        StringBuilder stringBuilder = new StringBuilder("0x");
+        if (src == null || src.length <= 0) {
             return null;
         }
-
-        try {
-            //获得字节数组，然后进行分析
-            byte[] payload = ndefRecord.getPayload();
-            //下面开始NDEF文本数据第一个字节，状态字节
-            //判断文本是基于UTF-8还是UTF-16的，取第一个字节"位与"上16进制的80，16进制的80也就是最高位是1，
-            //其他位都是0，所以进行"位与"运算后就会保留最高位
-            String textEncoding = ((payload[0] & 0x80) == 0) ? "UTF-8" : "UTF-16";
-            //3f最高两位是0，第六位是1，所以进行"位与"运算后获得第六位
-            int languageCodeLength = payload[0] & 0x3f;
-            //下面开始NDEF文本数据第二个字节，语言编码
-            //获得语言编码
-            String languageCode = new String(payload, 1, languageCodeLength, "US-ASCII");
-            //下面开始NDEF文本数据后面的字节，解析出文本
-            String textRecord = new String(payload, languageCodeLength + 1,
-                    payload.length - languageCodeLength - 1, textEncoding);
-            return textRecord;
-        } catch (Exception e) {
-            throw new IllegalArgumentException();
-        }
-    }
-
-    public static String parsePublicInfo(byte[] bytes){
-        int id = (int)(bytes[19] + bytes[18] * pow(16, 2) + bytes[17] * pow(16, 4)+ bytes[16] * pow(16, 6));
-        String output = "id: " + id + "\n";
-        output += "生效日期: " + bcdToString(bytes[20]) + bcdToString(bytes[21]) + bcdToString(bytes[22]) + bcdToString(bytes[23]) + "\n";
-        output += "失效日期: " + bcdToString(bytes[24]) + bcdToString(bytes[25]) + bcdToString(bytes[26]) + bcdToString(bytes[27]) + "\n";
-        return output;
-    }
-
-    public static String bytesToHexString(byte[] bytes, int len) {
-        StringBuilder stringBuilder = new StringBuilder("");
-        if (bytes == null || bytes.length <= 0) return null;
-        if (len <= 0) return "";
-        for (int i = 0; i < len; i++) {
-            int v = bytes[i] & 0xFF;
-            String hv = Integer.toHexString(v);
-            if (hv.length() < 2) {
-                stringBuilder.append("0");
-            }
-            stringBuilder.append(hv);
+        char[] buffer = new char[2];
+        for (int i = 0; i < src.length; i++) {
+            buffer[0] = Character.forDigit((src[i] >>> 4) & 0x0F, 16);
+            buffer[1] = Character.forDigit(src[i] & 0x0F, 16);
+            System.out.println(buffer);
+            stringBuilder.append(buffer);
         }
         return stringBuilder.toString();
     }
-    public static String bcdToString(byte a){
-        int val = a;
-        return String.valueOf(val / 16) + String.valueOf(val % 16);
+
+    private String ByteArrayToHexString(byte[] inarray) {
+        int i, j, in;
+        String[] hex = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A",
+                "B", "C", "D", "E", "F"};
+        String out = "";
+        for (j = 0; j < inarray.length; ++j) {
+            in = (int) inarray[j] & 0xff;
+            i = (in >> 4) & 0x0f;
+            out += hex[i];
+            i = in & 0x0f;
+            out += hex[i];
+        }
+        return out;
     }
+
+    private byte[] Hex2Bytes(String hexString) {
+        byte[] arrB = hexString.getBytes();
+        int iLen = arrB.length;
+        byte[] arrOut = new byte[iLen / 2];
+        String strTmp = null;
+        for (int i = 0; i < iLen; i += 2) {
+            strTmp = new String(arrB, i, 2);
+            arrOut[(i / 2)] = ((byte) Integer.parseInt(strTmp, 16));
+        }
+        return arrOut;
+    }
+
+
+    /**
+     * Parses the NDEF Message from the intent and prints to the TextView
+     */
+    private void processIntent(Intent intent) {
+        //取出封装在intent中的TAG
+        Tag tagFromIntent = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
+        String CardId = ByteArrayToHexString(tagFromIntent.getId());
+        metaInfo = "卡片ID:" + CardId + "\n";
+        // KLog.e(metaInfo);
+        boolean auth = false;
+        String tagString = tagFromIntent.toString();
+        //读取TAG
+        if (tagString.contains("MifareClassic")) {
+            metaInfo += "MifareClassic\n";
+            readMiCard(tagFromIntent);
+        } else {
+            readIsoDepTag(tagFromIntent);
+        }
+    }
+
+    private void readIsoDepTag(Tag tagFromIntent) {
+        IsoDep isoDep = IsoDep.get(tagFromIntent);
+        try {
+            if (!isoDep.isConnected()) {
+                isoDep.connect();
+            }
+            byte[] SELECT = {  //APDU查询语句
+                    (byte) 0x00, // CLA = 00 (first interindustry command set)
+                    (byte) 0xA4, // INS = A4 (SELECT)
+                    (byte) 0x00, // P1 = 00 (select file by DF name)
+                    (byte) 0x0C, // P2 = 0C (first or only file; no FCI)
+                    (byte) 0x06, // Lc = 6 (data/AID has 6 bytes)
+                    (byte) 0x50, (byte) 0x41, (byte) 0x59, (byte) 0x2E, (byte) 0x53, (byte) 0x5A, (byte) 0x54 // AID 应用表示，用于系统区分nfc卡片和启动对应服务
+
+            };
+            byte[] result = isoDep.transceive(SELECT);  //尝试请求一次
+            // KLog.d(result[0] + "  " + result[1]);   //基本都是错误返回，因为没有nfc的厂家协议说明，啥都做不了
+            isoDep.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void readMiCard(Tag tagFromIntent) {
+        MifareClassic mfc = MifareClassic.get(tagFromIntent);
+        try {
+            mfc.connect();
+            int type = mfc.getType();//获取TAG的类型
+            int sectorCount = mfc.getSectorCount();//获取TAG中包含的扇区数
+            String typeS = "";
+            switch (type) {
+                case MifareClassic.TYPE_CLASSIC:
+                    typeS = "TYPE_CLASSIC";
+                    break;
+                case MifareClassic.TYPE_PLUS:
+                    typeS = "TYPE_PLUS";
+                    break;
+                case MifareClassic.TYPE_PRO:
+                    typeS = "TYPE_PRO";
+                    break;
+                case MifareClassic.TYPE_UNKNOWN:
+                    typeS = "TYPE_UNKNOWN";
+                    break;
+            }
+            metaInfo += "\n卡片类型：" + typeS + "\n共" + sectorCount + "个扇区\n共"
+                    + mfc.getBlockCount() + "个块\n存储空间: " + mfc.getSize() + "B\n";
+            for (int j = 0; j < sectorCount; j++) {
+                //Authenticate a sector with key A.
+                auth = mfc.authenticateSectorWithKeyA(j,
+                        MifareClassic.KEY_DEFAULT);
+                if (!auth) {
+                    if (mfc.authenticateSectorWithKeyA(j,
+                            MifareClassic.KEY_MIFARE_APPLICATION_DIRECTORY)) {
+                        auth = mfc.authenticateSectorWithKeyA(j,
+                                MifareClassic.KEY_MIFARE_APPLICATION_DIRECTORY);
+                    }
+                    if (mfc.authenticateSectorWithKeyA(j,
+                            MifareClassic.KEY_NFC_FORUM)) {
+                        auth = mfc.authenticateSectorWithKeyA(j,
+                                MifareClassic.KEY_NFC_FORUM);
+                    }
+                }
+                int bCount;
+                int bIndex;
+                if (auth) {
+                    metaInfo += "Sector " + j + ":验证成功\n";
+                    // 读取扇区中的块
+                    bCount = mfc.getBlockCountInSector(j);
+                    bIndex = mfc.sectorToBlock(j);
+                    for (int i = 0; i < bCount; i++) {
+                        byte[] data = mfc.readBlock(bIndex);
+                        metaInfo += "Block " + bIndex + " : "
+                                + bytesToHexString(data) + "\n";
+                        bIndex++;
+                    }
+                } else {
+                    metaInfo += "Sector " + j + ":验证失败\n";
+                }
+            }
+            text.setText(metaInfo);
+            //Toast.makeText(this, metaInfo, Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
 }
