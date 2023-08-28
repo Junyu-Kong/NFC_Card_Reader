@@ -43,7 +43,6 @@ public class MainActivity extends AppCompatActivity {
         }
         mFilters = new IntentFilter[]{ndef,};
         mTechLists = new String[][]{{IsoDep.class.getName()}, {NfcA.class.getName()},};
-        // KLog.d(" mTechLists", NfcF.class.getName() + mTechLists.length);
         if (nfcAdapter == null) {
             Toast.makeText(this, "手机不支持nfc", Toast.LENGTH_SHORT).show();
             finish();
@@ -141,7 +140,6 @@ public class MainActivity extends AppCompatActivity {
         Tag tagFromIntent = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
         String CardId = ByteArrayToHexString(tagFromIntent.getId());
         metaInfo = "卡片ID:" + CardId + "\n";
-        // KLog.e(metaInfo);
         boolean auth = false;
         String tagString = tagFromIntent.toString();
         //读取TAG
@@ -169,7 +167,6 @@ public class MainActivity extends AppCompatActivity {
 
             };
             byte[] result = isoDep.transceive(SELECT);  //尝试请求一次
-            // KLog.d(result[0] + "  " + result[1]);   //基本都是错误返回，因为没有nfc的厂家协议说明，啥都做不了
             isoDep.close();
         } catch (Exception e) {
             e.printStackTrace();
